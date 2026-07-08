@@ -127,23 +127,28 @@ async def get_orders(limit: int = 10, cursor: Optional[str] = None):
 
 @app.post("/orders")
 async def create_order(request: Request):
-    body = await request.json()
-    # Support multiple possible field names
-    key = (body.get("idempotency_key") 
-           or body.get("key") 
-           or body.get("idempotencyKey"))
+    # Check header first (standard HTTP idempotency), then body
+    key = request.headers.get("Idempotency-Key")
     
+    if not key:
+        try:
+            body = await request.json()
+            key = (body.get("idempotency_key")
+                   or body.get("key")
+                   or body.get("idempotencyKey"))
+        except:
+            pass
+
     if key:
-        # Use Redis so it persists across requests
         existing = redis_client.get(f"order:idem:{key}")
         if existing:
             return JSONResponse(content={"id": existing}, status_code=200)
-    
+
     order_id = str(uuid.uuid4())
-    
+
     if key:
-        redis_client.set(f"order:idem:{key}", order_id, ex=86400)  # 24hr TTL
-    
+        redis_client.set(f"order:idem:{key}", order_id, ex=86400)
+
     return JSONResponse(content={"id": order_id}, status_code=201)
 
 @app.get("/stats")
