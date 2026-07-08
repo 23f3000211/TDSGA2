@@ -1,8 +1,5 @@
-import os
 import time
 import uuid
-import json
-import re
 from collections import deque
 from typing import Optional
 from fastapi import FastAPI, Request, Response
@@ -11,14 +8,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import Counter, generate_latest
 import redis
 import jwt
-from pydantic import BaseModel
 
 import config
 
 START_TIME = time.time()
 app = FastAPI()
 
-# CORS - must be added first
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -52,45 +47,43 @@ async def custom_middleware(request: Request, call_next):
     http_requests_total.inc()
     req_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
     request.state.req_id = req_id
-    logs_queue.append({"level": "INFO", "ts": time.time(),
-                       "path": request.url.path, "request_id": req_id})
+    logs_queue.append({
+        "level": "INFO", "ts": time.time(),
+        "path": request.url.path, "request_id": req_id
+    })
 
     path = request.url.path.rstrip("/") or "/"
     start_time = time.time()
     response = None
 
-    # Rate limiting (skip OPTIONS)
-    if request.method != "OPTIONS":
+    # Rate limit ONLY if X-Client-Id header is explicitly sent
+    client_id = request.headers.get("X-Client-Id")
+    if client_id and request.method not in ("OPTIONS", "HEAD"):
         if path == "/orders":
-            client_id = request.headers.get("X-Client-Id", "default")
-            if "flood" in client_id or client_id == "default":
-                if is_rate_limited(client_id, config.Q9_RATE_LIMIT, "q9"):
-                    response = Response(status_code=429,
-                                        headers={"Retry-After": "10"})
+            if is_rate_limited(client_id, config.Q9_RATE_LIMIT, "q9"):
+                response = Response(status_code=429, headers={"Retry-After": "10"})
         elif path == "/ping":
-            client_id = request.headers.get("X-Client-Id", "default")
             if is_rate_limited(client_id, config.Q10_RATE_LIMIT, "q10"):
-                response = Response(status_code=429,
-                                    headers={"Retry-After": "10"})
+                response = Response(status_code=429, headers={"Retry-After": "10"})
 
     if not response:
         try:
             response = await call_next(request)
         except Exception as e:
+            print(f"Error: {e}", flush=True)
             response = Response(status_code=500, content="Internal Server Error")
 
     response.headers["X-Request-ID"] = req_id
     response.headers["X-Process-Time"] = f"{time.time() - start_time:.6f}"
     return response
 
-# --- ROUTES ---
+# ---------- ROUTES ----------
 
 @app.get("/")
 async def root():
     return {"status": "ok"}
 
-# ⚠️ APNA T VALUE YAHAN DAALO (exam page dekho)
-TOTAL_ORDERS = 54
+TOTAL_ORDERS = 54  # ⚠️ APNA T VALUE DAALO EXAM PAGE SE
 ALL_ORDER_IDS = list(range(1, TOTAL_ORDERS + 1))
 
 @app.get("/orders")
@@ -101,18 +94,19 @@ async def get_orders(limit: int = 10, cursor: Optional[str] = None):
             start = int(cursor)
         except:
             start = 0
-    items = ALL_ORDER_IDS[start:start + limit]
+    items = ALL_ORDER_IDS[start : start + limit]
     next_cursor = str(start + limit) if (start + limit) < TOTAL_ORDERS else None
     return {"items": [{"id": i} for i in items], "next_cursor": next_cursor}
 
 @app.post("/orders")
 async def create_order(request: Request):
-    # Check Idempotency-Key header first, then body
     key = request.headers.get("Idempotency-Key")
     if not key:
         try:
             body = await request.json()
-            key = body.get("idempotency_key") or body.get("key") or body.get("idempotencyKey")
+            key = (body.get("idempotency_key")
+                   or body.get("key")
+                   or body.get("idempotencyKey"))
         except:
             pass
 
