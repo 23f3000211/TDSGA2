@@ -408,6 +408,7 @@ async def create_order(request: Request):
     return JSONResponse({"id": order_id}, status_code=201)
 
 # --- Q10 ---
+
 @app.get("/ping")
-async def ping():
-    return {"ping": "pong"}
+async def ping(request: Request):
+    return {"email": config.EMAIL, "request_id": request.state.req_id}
