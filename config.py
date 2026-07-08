@@ -2,9 +2,8 @@ EMAIL = "23f3000211@ds.study.iitm.ac.in"
 
 # Q1: CORS Allowed Origin
 Q1_ALLOWED_ORIGIN = "https://dash-1c90d5.example.com"
-EXAM_PORTAL_ORIGIN = "https://exam.sanand.workers.dev"
 
-# Q2: OAuth JWKS
+# Q2: OAuth JWKS (Issuer, Audience, and Public Key)
 ISSUER = "https://idp.exam.local"
 AUDIENCE = "tds-8bempw6v.apps.exam.local"
 PUBLIC_KEY_PEM = """-----BEGIN PUBLIC KEY-----
@@ -23,12 +22,18 @@ Q3_WORKERS = 1
 Q3_DEBUG = False
 Q3_LOG_LEVEL = "info"
 
-# Q5: Analytics API key
+# Q5: Analytics
 Q5_API_KEY = "ak_45nn52bkghgvvp10n8caqvy5"
 
-# Q9: Rate limit for /orders (requests per 10s)
-Q9_RATE_LIMIT = 5
+# Q9: Idempotency & Rate Limit
+Q9_TOTAL_ORDERS = 54
+Q9_RATE_LIMIT = 20
 
-# Q10: Rate limit for /ping
+# Q10: Middleware Rate Limit
+Q10_ALLOWED_ORIGIN = "https://app-ps5zje.example.com"
 Q10_RATE_LIMIT = 12
-Q10_ALLOWED_ORIGIN = "https://exam.sanand.workers.dev"
+
+# ==========================================
+# FIXED VARIABLES (Do not change these)
+# ==========================================
+EXAM_PORTAL_ORIGIN = "https://exam.sanand.workers.dev"
