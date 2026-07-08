@@ -91,17 +91,44 @@ async def custom_middleware(request: Request, call_next):
     if client_id and request.method not in ("OPTIONS", "HEAD"):
         if path == "/orders":
             if is_rate_limited(client_id, config.Q9_RATE_LIMIT, "q9"):
-                response = Response(status_code=429, headers={"Retry-After": "10"})
+                response = Response(
+                    status_code=429,
+                    headers={
+                        "Retry-After": "10",
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Allow-Methods": "*",
+                        "Access-Control-Allow-Headers": "*",
+                        "Access-Control-Expose-Headers": "*"
+                    }
+                )
         elif path == "/ping":
             if is_rate_limited(client_id, config.Q10_RATE_LIMIT, "q10"):
-                response = Response(status_code=429, headers={"Retry-After": "10"})
+                response = Response(
+                    status_code=429,
+                    headers={
+                        "Retry-After": "10",
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Allow-Methods": "*",
+                        "Access-Control-Allow-Headers": "*",
+                        "Access-Control-Expose-Headers": "*"
+                    }
+                )
 
     if not response:
         try:
             response = await call_next(request)
         except Exception as e:
             print(f"Error: {e}", flush=True)
-            response = Response(status_code=500, content="Internal Server Error")
+            response = Response(
+                status_code=500,
+                content="Internal Server Error",
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "*",
+                    "Access-Control-Allow-Headers": "*",
+                    "Access-Control-Expose-Headers": "*"
+                }
+            )
 
     response.headers["X-Request-ID"] = req_id
     response.headers["X-Process-Time"] = f"{time.time() - start_time:.6f}"
