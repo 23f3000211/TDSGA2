@@ -107,7 +107,7 @@ async def root():
     return {"status": "ok"}
 
 # ⚠️ CHANGE THIS to your assigned T value from the exam page
-TOTAL_ORDERS = 218
+TOTAL_ORDERS = 54
 ALL_ORDER_IDS = list(range(1, TOTAL_ORDERS + 1))
 
 @app.get("/orders")
