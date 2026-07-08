@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+httpx
+redis
+PyJWT
+pydantic
+prometheus-client
