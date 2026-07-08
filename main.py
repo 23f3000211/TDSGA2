@@ -18,6 +18,16 @@ import config
 LLM_MODEL = "qwen2.5:0.5b"
 START_TIME = time.time()
 app = FastAPI()
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
 redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
 
 http_requests_total = Counter("http_requests_total", "Total HTTP Requests")
@@ -84,20 +94,6 @@ async def custom_middleware(request: Request, call_next):
     process_time = time.time() - start_time
     response.headers["X-Request-ID"] = req_id
     response.headers["X-Process-Time"] = f"{process_time:.6f}"
-
-    if origin:
-        if path == "/ping":
-            if origin == config.Q10_ALLOWED_ORIGIN or config.EXAM_PORTAL_ORIGIN in origin:
-                response.headers["Access-Control-Allow-Origin"] = origin
-        elif path == "/stats":
-            if origin == config.Q1_ALLOWED_ORIGIN or config.EXAM_PORTAL_ORIGIN in origin:
-                response.headers["Access-Control-Allow-Origin"] = origin
-        else:
-            response.headers["Access-Control-Allow-Origin"] = "*"
-            
-    response.headers["Access-Control-Allow-Methods"] = "*"
-    response.headers["Access-Control-Allow-Headers"] = "*"
-    response.headers["Access-Control-Expose-Headers"] = "*"
     return response
 
 # --- ROUTES ---
