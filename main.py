@@ -136,3 +136,37 @@ async def metrics():
 @app.get("/logs")
 async def get_logs():
     return list(logs_queue)
+
+@app.post("/analytics")
+async def analytics(request: Request):
+    api_key = request.headers.get("X-API-Key") or request.headers.get("X-Api-Key")
+    if not api_key or api_key != config.Q5_API_KEY:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    body = await request.json()
+    events = body.get("events", [])
+
+    total_events = len(events)
+    users = set()
+    user_revenue = {}
+    revenue = 0.0
+
+    for event in events:
+        user = event.get("user")
+        amount = event.get("amount", 0)
+        if user:
+            users.add(user)
+        if amount > 0:
+            revenue += amount
+            if user:
+                user_revenue[user] = user_revenue.get(user, 0) + amount
+
+    top_user = max(user_revenue, key=user_revenue.get) if user_revenue else None
+
+    return JSONResponse({
+        "email": config.EMAIL,
+        "total_events": total_events,
+        "unique_users": len(users),
+        "revenue": round(revenue, 2),
+        "top_user": top_user
+    })
