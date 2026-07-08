@@ -24,11 +24,11 @@ Q3_DEBUG = False
 Q3_LOG_LEVEL = "info"
 
 # Q5: Analytics API key
-Q5_API_KEY = "ak-placeholder"
+Q5_API_KEY = "ak_45nn52bkghgvvp10n8caqvy5"
 
 # Q9: Rate limit for /orders (requests per 10s)
 Q9_RATE_LIMIT = 5
 
-# Q10: Rate limit for /ping and allowed origin
+# Q10: Rate limit for /ping
 Q10_RATE_LIMIT = 12
 Q10_ALLOWED_ORIGIN = "https://exam.sanand.workers.dev"
