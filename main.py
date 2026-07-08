@@ -8,7 +8,6 @@ from collections import defaultdict, deque
 from typing import Optional
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import Counter, generate_latest
 import redis
 import jwt
@@ -19,15 +18,6 @@ import config
 LLM_MODEL = "qwen2.5:0.5b"
 START_TIME = time.time()
 app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-)
 
 redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
 
@@ -69,6 +59,23 @@ def safe_extract_json(s: str) -> dict:
                 pass
     return {}
 
+# Route-specific secure CORS handler
+def apply_cors_headers(response: Response, path: str, origin: Optional[str]) -> Response:
+    if origin:
+        if path == "/stats":
+            if origin == config.Q1_ALLOWED_ORIGIN or config.EXAM_PORTAL_ORIGIN in origin:
+                response.headers["Access-Control-Allow-Origin"] = origin
+        elif path == "/ping":
+            if origin == config.Q10_ALLOWED_ORIGIN or config.EXAM_PORTAL_ORIGIN in origin:
+                response.headers["Access-Control-Allow-Origin"] = origin
+        else:
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            
+    response.headers["Access-Control-Allow-Methods"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Expose-Headers"] = "*"
+    return response
+
 # --- MIDDLEWARE ---
 @app.middleware("http")
 async def custom_middleware(request: Request, call_next):
@@ -84,55 +91,36 @@ async def custom_middleware(request: Request, call_next):
     })
 
     path = request.url.path.rstrip("/") or "/"
+    origin = request.headers.get("Origin")
     start_time = time.time()
     response = None
+
+    if request.method == "OPTIONS":
+        response = Response(status_code=204)
+        return apply_cors_headers(response, path, origin)
 
     client_id = request.headers.get("X-Client-Id")
     if client_id and request.method not in ("OPTIONS", "HEAD"):
         if path == "/orders":
             if is_rate_limited(client_id, config.Q9_RATE_LIMIT, "q9"):
-                response = Response(
-                    status_code=429,
-                    headers={
-                        "Retry-After": "10",
-                        "Access-Control-Allow-Origin": "*",
-                        "Access-Control-Allow-Methods": "*",
-                        "Access-Control-Allow-Headers": "*",
-                        "Access-Control-Expose-Headers": "*"
-                    }
-                )
+                response = Response(status_code=429, headers={"Retry-After": "10"})
+                return apply_cors_headers(response, path, origin)
         elif path == "/ping":
             if is_rate_limited(client_id, config.Q10_RATE_LIMIT, "q10"):
-                response = Response(
-                    status_code=429,
-                    headers={
-                        "Retry-After": "10",
-                        "Access-Control-Allow-Origin": "*",
-                        "Access-Control-Allow-Methods": "*",
-                        "Access-Control-Allow-Headers": "*",
-                        "Access-Control-Expose-Headers": "*"
-                    }
-                )
+                response = Response(status_code=429, headers={"Retry-After": "10"})
+                return apply_cors_headers(response, path, origin)
 
     if not response:
         try:
             response = await call_next(request)
         except Exception as e:
             print(f"Error: {e}", flush=True)
-            response = Response(
-                status_code=500,
-                content="Internal Server Error",
-                headers={
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Allow-Methods": "*",
-                    "Access-Control-Allow-Headers": "*",
-                    "Access-Control-Expose-Headers": "*"
-                }
-            )
+            response = Response(status_code=500, content="Internal Server Error")
+            return apply_cors_headers(response, path, origin)
 
     response.headers["X-Request-ID"] = req_id
     response.headers["X-Process-Time"] = f"{time.time() - start_time:.6f}"
-    return response
+    return apply_cors_headers(response, path, origin)
 
 # --- Q1 ---
 @app.get("/stats")
