@@ -39,25 +39,6 @@ def is_rate_limited(client_id: str, limit: int, prefix: str) -> bool:
         print(f"Redis rate limit error: {e}", flush=True)
         return False
 
-def safe_extract_json(s: str) -> dict:
-    s = s.strip()
-    if s.startswith("```"):
-        newline_idx = s.find("\n")
-        if newline_idx != -1:
-            s = s[newline_idx:].strip()
-        if s.endswith("```"):
-            s = s[:-3].strip()
-    try:
-        return json.loads(s)
-    except Exception:
-        match = re.search(r'(\{.*\})', s, re.DOTALL)
-        if match:
-            try:
-                return json.loads(match.group(1))
-            except Exception:
-                pass
-    return {}
-
 # --- MIDDLEWARE ---
 @app.middleware("http")
 async def custom_middleware(request: Request, call_next):
@@ -74,7 +55,6 @@ async def custom_middleware(request: Request, call_next):
         "request_id": req_id
     })
 
-    now = time.time()
     path = request.url.path.rstrip("/")
     if path == "": path = "/"
     origin = request.headers.get("Origin")
@@ -120,43 +100,14 @@ async def custom_middleware(request: Request, call_next):
     response.headers["Access-Control-Expose-Headers"] = "*"
     return response
 
-# --- Q1 ---
-@app.get("/stats")
-async def stats(values: str = ""):
-    nums = [int(x) for x in values.split(",") if x.strip()]
-    if not nums:
-        return JSONResponse(content={"error": "no values"}, status_code=400)
-    return {
-        "email": config.EMAIL,
-        "count": len(nums),
-        "sum": sum(nums),
-        "min": min(nums),
-        "max": max(nums),
-        "mean": round(sum(nums) / len(nums), 6)
-    }
-
-# --- Q2 ---
 # --- ROUTES ---
 
 @app.get("/")
 async def root():
     return {"status": "ok"}
 
-orders_store = {}
-
-@app.post("/orders")
-async def create_order(request: Request):
-    body = await request.json()
-    key = body.get("idempotency_key") or body.get("key")
-    if key and key in orders_store:
-        return JSONResponse(content={"id": orders_store[key]}, status_code=200)
-    order_id = str(uuid.uuid4())
-    if key:
-        orders_store[key] = order_id
-    return JSONResponse(content={"id": order_id}, status_code=201)
-
-# ⚠️ APNA T VALUE DEKHO EXAM PAGE PE AUR YAHAN REPLACE KARO
-TOTAL_ORDERS = 54
+# ⚠️ CHANGE THIS to your assigned T value from the exam page
+TOTAL_ORDERS = 218
 ALL_ORDER_IDS = list(range(1, TOTAL_ORDERS + 1))
 
 @app.get("/orders")
@@ -173,6 +124,27 @@ async def get_orders(limit: int = 10, cursor: Optional[str] = None):
         "items": [{"id": i} for i in items],
         "next_cursor": next_cursor
     }
+
+@app.post("/orders")
+async def create_order(request: Request):
+    body = await request.json()
+    # Support multiple possible field names
+    key = (body.get("idempotency_key") 
+           or body.get("key") 
+           or body.get("idempotencyKey"))
+    
+    if key:
+        # Use Redis so it persists across requests
+        existing = redis_client.get(f"order:idem:{key}")
+        if existing:
+            return JSONResponse(content={"id": existing}, status_code=200)
+    
+    order_id = str(uuid.uuid4())
+    
+    if key:
+        redis_client.set(f"order:idem:{key}", order_id, ex=86400)  # 24hr TTL
+    
+    return JSONResponse(content={"id": order_id}, status_code=201)
 
 @app.get("/stats")
 async def get_stats():
@@ -192,4 +164,3 @@ async def metrics():
 @app.get("/logs")
 async def get_logs():
     return list(logs_queue)
-    return {"email": config.EMAIL, "request_id": request.state.req_id}
