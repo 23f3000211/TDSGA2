@@ -7,7 +7,6 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import Counter, generate_latest
 import redis
-import jwt
 
 import config
 
@@ -83,8 +82,8 @@ async def custom_middleware(request: Request, call_next):
 async def root():
     return {"status": "ok"}
 
-TOTAL_ORDERS = 54  # ⚠️ APNA T VALUE DAALO EXAM PAGE SE
-ALL_ORDER_IDS = list(range(1, TOTAL_ORDERS + 1))
+# T = 54 (from git commit history)
+TOTAL_ORDERS = 54
 
 @app.get("/orders")
 async def get_orders(limit: int = 10, cursor: Optional[str] = None):
@@ -94,9 +93,9 @@ async def get_orders(limit: int = 10, cursor: Optional[str] = None):
             start = int(cursor)
         except:
             start = 0
-    items = ALL_ORDER_IDS[start : start + limit]
+    items = [{"id": i} for i in range(start + 1, min(start + limit + 1, TOTAL_ORDERS + 1))]
     next_cursor = str(start + limit) if (start + limit) < TOTAL_ORDERS else None
-    return {"items": [{"id": i} for i in items], "next_cursor": next_cursor}
+    return {"items": items, "next_cursor": next_cursor}
 
 @app.post("/orders")
 async def create_order(request: Request):
@@ -120,6 +119,48 @@ async def create_order(request: Request):
         redis_client.set(f"order:idem:{key}", order_id, ex=86400)
     return JSONResponse({"id": order_id}, status_code=201)
 
+@app.post("/analytics")
+async def post_analytics(request: Request):
+    api_key = request.headers.get("X-API-Key") or request.headers.get("x-api-key")
+    if not api_key or api_key != config.Q5_API_KEY:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+        
+    events = body.get("events", [])
+    total_events = len(events)
+    
+    unique_users = set()
+    user_revenue = {}
+    revenue = 0.0
+    
+    for event in events:
+        user = event.get("user")
+        amount = event.get("amount", 0.0)
+        
+        if user:
+            unique_users.add(user)
+            
+        if isinstance(amount, (int, float)) and amount > 0:
+            revenue += amount
+            if user:
+                user_revenue[user] = user_revenue.get(user, 0.0) + amount
+                
+    top_user = None
+    if user_revenue:
+        top_user = max(user_revenue, key=user_revenue.get)
+        
+    return {
+        "email": config.EMAIL,
+        "total_events": total_events,
+        "unique_users": len(unique_users),
+        "revenue": round(revenue, 2),
+        "top_user": top_user
+    }
+
 @app.get("/stats")
 async def get_stats():
     return {"uptime": time.time() - START_TIME,
@@ -136,37 +177,3 @@ async def metrics():
 @app.get("/logs")
 async def get_logs():
     return list(logs_queue)
-
-@app.post("/analytics")
-async def analytics(request: Request):
-    api_key = request.headers.get("X-API-Key") or request.headers.get("X-Api-Key")
-    if not api_key or api_key != config.Q5_API_KEY:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-
-    body = await request.json()
-    events = body.get("events", [])
-
-    total_events = len(events)
-    users = set()
-    user_revenue = {}
-    revenue = 0.0
-
-    for event in events:
-        user = event.get("user")
-        amount = event.get("amount", 0)
-        if user:
-            users.add(user)
-        if amount > 0:
-            revenue += amount
-            if user:
-                user_revenue[user] = user_revenue.get(user, 0) + amount
-
-    top_user = max(user_revenue, key=user_revenue.get) if user_revenue else None
-
-    return JSONResponse({
-        "email": config.EMAIL,
-        "total_events": total_events,
-        "unique_users": len(users),
-        "revenue": round(revenue, 2),
-        "top_user": top_user
-    })
